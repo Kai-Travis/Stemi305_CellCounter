@@ -127,41 +127,82 @@ class StemiApp:
 
         print("Connecting to Stemi camera...")
 
-        cap = cv2.VideoCapture(STREAM_URL)
+        try:
 
-        if not cap.isOpened():
+            response = requests.get(
+                STREAM_URL,
+                auth=HTTPBasicAuth(
+                    USERNAME,
+                    PASSWORD
+                ),
+                stream=True,
+                timeout=10
+            )
 
-            print("Could not open camera stream.")
+            response.raise_for_status()
 
-            return
+            print("Camera stream connected.")
 
-        print("Camera stream connected.")
+            buffer = b""
 
-        while self.running:
+            for chunk in response.iter_content(
+                chunk_size=4096
+            ):
 
-            ret, frame = cap.read()
+                if not self.running:
+                    break
 
-            if not ret:
+                buffer += chunk
 
-                print("Failed to receive frame.")
+                # Find JPEG start
+                start = buffer.find(b"\xff\xd8")
 
-                time.sleep(0.1)
+                # Find JPEG end
+                end = buffer.find(
+                    b"\xff\xd9",
+                    start + 2
+                )
 
-                continue
+                if start != -1 and end != -1:
 
-            # Only keep the newest frame.
-            #
-            # This is important:
-            # We do NOT want frames piling up while
-            # the GUI is busy displaying an older frame.
+                    jpeg = buffer[
+                        start:end + 2
+                    ]
 
-            with self.frame_lock:
+                    buffer = buffer[
+                        end + 2:
+                    ]
 
-                self.current_frame = frame
+                    # Decode JPEG
+                    frame = cv2.imdecode(
+                        np.frombuffer(
+                            jpeg,
+                            dtype=np.uint8
+                        ),
+                        cv2.IMREAD_COLOR
+                    )
 
-        cap.release()
+                    if frame is not None:
 
-        print("Camera stream closed.")
+                        # Only keep newest frame
+                        with self.frame_lock:
+
+                            self.current_frame = frame
+
+        except Exception as e:
+
+            print(
+                f"Camera stream error: {e}"
+            )
+
+        finally:
+
+            try:
+                response.close()
+            except:
+                pass
+
+            print("Camera stream closed.")
 
 
     # ========================================================
