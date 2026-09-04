@@ -123,7 +123,7 @@ class StemiApp:
     # Camera acquisition
     # ========================================================
 
-    def camera_loop():
+    def camera_loop(self):
         global latest_frame
 
         response = requests.get(
