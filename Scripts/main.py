@@ -184,9 +184,9 @@ class StemiApp:
 
                     if frame is not None:
 
-                        # Only keep newest frame
-                        with self.frame_lock:
+                        print("Got frame:", frame.shape)
 
+                        with self.frame_lock:
                             self.current_frame = frame
 
         except Exception as e:
