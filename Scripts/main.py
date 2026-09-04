@@ -123,86 +123,44 @@ class StemiApp:
     # Camera acquisition
     # ========================================================
 
-    def camera_loop(self):
+    def camera_loop():
+        global latest_frame
 
-        print("Connecting to Stemi camera...")
+        response = requests.get(
+            STREAM_URL,
+            auth=(USERNAME, PASSWORD),
+            stream=True,
+            timeout=10
+        )
 
-        try:
+        print("Camera stream connected.")
+        print("Content-Type:", response.headers.get("Content-Type"))
 
-            response = requests.get(
-                STREAM_URL,
-                auth=HTTPBasicAuth(
-                    USERNAME,
-                    PASSWORD
-                ),
-                stream=True,
-                timeout=10
-            )
+        buffer = b""
 
-            response.raise_for_status()
+        for chunk in response.iter_content(chunk_size=8192):
+            buffer += chunk
 
-            print("Camera stream connected.")
+            # Look for JPEG start/end markers
+            start = buffer.find(b"\xff\xd8")
+            end = buffer.find(b"\xff\xd9", start + 2)
 
-            buffer = b""
+            if start != -1 and end != -1:
+                jpeg_data = buffer[start:end + 2]
 
-            for chunk in response.iter_content(
-                chunk_size=4096
-            ):
+                # Keep anything after this JPEG for the next frame
+                buffer = buffer[end + 2:]
 
-                if not self.running:
-                    break
-
-                buffer += chunk
-
-                # Find JPEG start
-                start = buffer.find(b"\xff\xd8")
-
-                # Find JPEG end
-                end = buffer.find(
-                    b"\xff\xd9",
-                    start + 2
+                frame = cv2.imdecode(
+                    np.frombuffer(jpeg_data, dtype=np.uint8),
+                    cv2.IMREAD_COLOR
                 )
 
-                if start != -1 and end != -1:
+                if frame is not None:
+                    with frame_lock:
+                        latest_frame = frame
 
-                    jpeg = buffer[
-                        start:end + 2
-                    ]
-
-                    buffer = buffer[
-                        end + 2:
-                    ]
-
-                    # Decode JPEG
-                    frame = cv2.imdecode(
-                        np.frombuffer(
-                            jpeg,
-                            dtype=np.uint8
-                        ),
-                        cv2.IMREAD_COLOR
-                    )
-
-                    if frame is not None:
-
-                        print("Got frame:", frame.shape)
-
-                        with self.frame_lock:
-                            self.current_frame = frame
-
-        except Exception as e:
-
-            print(
-                f"Camera stream error: {e}"
-            )
-
-        finally:
-
-            try:
-                response.close()
-            except:
-                pass
-
-            print("Camera stream closed.")
+                    print("Got frame:", frame.shape)
 
 
     # ========================================================
