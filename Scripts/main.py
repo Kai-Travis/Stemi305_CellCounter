@@ -1,11 +1,21 @@
+```python
 import tkinter as tk
 from tkinter import messagebox
+
 import cv2
 from PIL import Image, ImageTk
+
 import requests
 from requests.auth import HTTPBasicAuth
+
 import threading
-import io
+import time
+import numpy as np
+
+
+# ============================================================
+# Camera settings
+# ============================================================
 
 CAMERA_IP = "192.168.20.26"
 USERNAME = "admin"
@@ -14,24 +24,63 @@ PASSWORD = "ZEISS1846"
 STREAM_URL = f"http://{CAMERA_IP}:8080/?action=stream"
 SNAPSHOT_URL = f"http://{CAMERA_IP}:8080/?action=snapshot"
 
+
+# ============================================================
+# GUI settings
+# ============================================================
+
+PREVIEW_WIDTH = 640
+PREVIEW_HEIGHT = 360
+
+# How often the GUI updates the displayed image
+# 0.10 seconds = approximately 10 FPS
+GUI_UPDATE_INTERVAL = 100
+
+
 class StemiApp:
+
     def __init__(self, root):
+
         self.root = root
+
         self.root.title("Stemi Cell Counter")
         self.root.geometry("1100x700")
 
+        # ----------------------------------------------------
+        # State
+        # ----------------------------------------------------
+
         self.running = True
+
+        # Most recent camera frame
         self.current_frame = None
 
-        # -------------------------
-        # Layout
-        # -------------------------
+        # Lock protects current_frame between threads
+        self.frame_lock = threading.Lock()
 
-        self.video_label = tk.Label(root)
-        self.video_label.pack(side="left", padx=20, pady=20)
+        # ----------------------------------------------------
+        # Layout
+        # ----------------------------------------------------
+
+        self.video_label = tk.Label(
+            root,
+            width=PREVIEW_WIDTH,
+            height=PREVIEW_HEIGHT,
+            bg="black"
+        )
+
+        self.video_label.pack(
+            side="left",
+            padx=20,
+            pady=20
+        )
 
         self.button_frame = tk.Frame(root)
-        self.button_frame.pack(side="right", padx=40)
+
+        self.button_frame.pack(
+            side="right",
+            padx=40
+        )
 
         self.count_button = tk.Button(
             self.button_frame,
@@ -44,70 +93,138 @@ class StemiApp:
 
         self.count_button.pack()
 
+        # ----------------------------------------------------
         # Start camera thread
+        # ----------------------------------------------------
+
         self.camera_thread = threading.Thread(
             target=self.camera_loop,
             daemon=True
         )
+
         self.camera_thread.start()
 
-        self.root.protocol("WM_DELETE_WINDOW", self.close)
+        # ----------------------------------------------------
+        # Start GUI update loop
+        # ----------------------------------------------------
 
-    # -------------------------
-    # Live camera
-    # -------------------------
+        self.update_video()
+
+        # ----------------------------------------------------
+        # Window close event
+        # ----------------------------------------------------
+
+        self.root.protocol(
+            "WM_DELETE_WINDOW",
+            self.close
+        )
+
+
+    # ========================================================
+    # Camera acquisition
+    # ========================================================
 
     def camera_loop(self):
 
-        cap = cv2.VideoCapture(
-            STREAM_URL,
-            cv2.CAP_FFMPEG
-        )
+        print("Connecting to Stemi camera...")
+
+        cap = cv2.VideoCapture(STREAM_URL)
 
         if not cap.isOpened():
-            print("Could not open camera stream")
+
+            print("Could not open camera stream.")
+
             return
+
+        print("Camera stream connected.")
 
         while self.running:
 
             ret, frame = cap.read()
 
             if not ret:
+
+                print("Failed to receive frame.")
+
+                time.sleep(0.1)
+
                 continue
 
-            self.current_frame = frame.copy()
+            # Only keep the newest frame.
+            #
+            # This is important:
+            # We do NOT want frames piling up while
+            # the GUI is busy displaying an older frame.
 
-            # Convert OpenCV BGR → RGB
+            with self.frame_lock:
+
+                self.current_frame = frame
+
+        cap.release()
+
+        print("Camera stream closed.")
+
+
+    # ========================================================
+    # GUI video update
+    # ========================================================
+
+    def update_video(self):
+
+        if not self.running:
+            return
+
+        frame = None
+
+        # Get the newest frame
+        with self.frame_lock:
+
+            if self.current_frame is not None:
+
+                frame = self.current_frame.copy()
+
+        if frame is not None:
+
+            # ------------------------------------------------
+            # Resize BEFORE converting to PIL
+            # ------------------------------------------------
+
+            frame = cv2.resize(
+                frame,
+                (PREVIEW_WIDTH, PREVIEW_HEIGHT),
+                interpolation=cv2.INTER_AREA
+            )
+
+            # OpenCV BGR -> RGB
             frame_rgb = cv2.cvtColor(
                 frame,
                 cv2.COLOR_BGR2RGB
             )
 
+            # Convert to PIL
             image = Image.fromarray(frame_rgb)
 
-            # Resize for GUI
-            image.thumbnail((800, 600))
-
+            # Convert to Tkinter image
             photo = ImageTk.PhotoImage(image)
 
-            self.root.after(
-                0,
-                self.update_video,
-                photo
+            # Display
+            self.video_label.configure(
+                image=photo
             )
 
-        cap.release()
+            # Keep reference
+            self.video_label.image = photo
 
-    def update_video(self, photo):
+        # Schedule next GUI update
+        self.root.after(
+            GUI_UPDATE_INTERVAL,
+            self.update_video
+        )
 
-        self.video_label.configure(image=photo)
 
-        # Keep reference so Tkinter doesn't delete it
-        self.video_label.image = photo
-
-    # -------------------------
+    # ========================================================
     # Count cells
-    # -------------------------
+    # ========================================================
 
     def count_cells(self):
 
@@ -123,11 +240,21 @@ class StemiApp:
 
         thread.start()
 
+
+    # ========================================================
+    # Cell counting
+    # ========================================================
+
     def run_counting(self):
 
         try:
 
+            print("Taking high-resolution snapshot...")
+
+            # ------------------------------------------------
             # Get high-resolution snapshot
+            # ------------------------------------------------
+
             response = requests.get(
                 SNAPSHOT_URL,
                 auth=HTTPBasicAuth(
@@ -141,28 +268,45 @@ class StemiApp:
 
             image_data = response.content
 
+            # ------------------------------------------------
+            # Decode JPEG
+            # ------------------------------------------------
+
             image_array = cv2.imdecode(
-                __import__("numpy").frombuffer(
+                np.frombuffer(
                     image_data,
-                    dtype="uint8"
+                    dtype=np.uint8
                 ),
                 cv2.IMREAD_COLOR
             )
 
             if image_array is None:
+
                 raise RuntimeError(
-                    "Could not decode camera image"
+                    "Could not decode camera image."
                 )
 
-            # ---------------------------------
-            # YOUR CELL COUNTING ALGORITHM HERE
-            # ---------------------------------
+            print(
+                f"Snapshot received: "
+                f"{image_array.shape[1]} x "
+                f"{image_array.shape[0]}"
+            )
 
+            # ------------------------------------------------
+            # YOUR CELL COUNTING ALGORITHM
+            # ------------------------------------------------
+
+            # Replace this with your actual algorithm.
+            #
             # Example:
             #
             # count = count_cells(image_array)
 
             count = "TEST"
+
+            # ------------------------------------------------
+            # Show result
+            # ------------------------------------------------
 
             self.root.after(
                 0,
@@ -178,12 +322,22 @@ class StemiApp:
                 str(e)
             )
 
+
+    # ========================================================
+    # Display result
+    # ========================================================
+
     def show_result(self, result):
 
         self.count_button.config(
             text=f"CELLS: {result}",
             state="normal"
         )
+
+
+    # ========================================================
+    # Display error
+    # ========================================================
 
     def show_error(self, error):
 
@@ -197,15 +351,23 @@ class StemiApp:
             state="normal"
         )
 
-    # -------------------------
-    # Close
-    # -------------------------
+
+    # ========================================================
+    # Close application
+    # ========================================================
 
     def close(self):
 
+        print("Closing application...")
+
         self.running = False
+
         self.root.destroy()
 
+
+# ============================================================
+# Start application
+# ============================================================
 
 root = tk.Tk()
 
