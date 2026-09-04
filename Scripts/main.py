@@ -1,15 +1,13 @@
 import tkinter as tk
 from tkinter import messagebox
-
 import cv2
 from PIL import Image, ImageTk
-
 import requests
 from requests.auth import HTTPBasicAuth
-
 import threading
 import time
 import numpy as np
+import subprocess
 
 
 # ============================================================
@@ -126,41 +124,92 @@ class StemiApp:
     def camera_loop(self):
         global latest_frame
 
+        WIDTH = 1920
+        HEIGHT = 1080
+        FRAME_SIZE = WIDTH * HEIGHT * 3
+
+        # Start FFmpeg
+        ffmpeg = subprocess.Popen(
+            [
+                "ffmpeg",
+                "-loglevel", "error",
+                "-f", "h264",
+                "-i", "pipe:0",
+                "-f", "rawvideo",
+                "-pix_fmt", "bgr24",
+                "pipe:1"
+            ],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            bufsize=10**8
+        )
+
+        print("FFmpeg started.")
+
+        # Connect to ZEISS stream
         response = requests.get(
             STREAM_URL,
             auth=(USERNAME, PASSWORD),
-            stream=True,
-            timeout=10
+            stream=True
         )
 
         print("Camera stream connected.")
-        print("Content-Type:", response.headers.get("Content-Type"))
 
         buffer = b""
+        boundary = b"--boundarydonotcross"
 
-        for chunk in response.iter_content(chunk_size=8192):
-            buffer += chunk
+        try:
+            for chunk in response.iter_content(chunk_size=8192):
+                buffer += chunk
 
-            # Look for JPEG start/end markers
-            start = buffer.find(b"\xff\xd8")
-            end = buffer.find(b"\xff\xd9", start + 2)
+                while boundary in buffer:
 
-            if start != -1 and end != -1:
-                jpeg_data = buffer[start:end + 2]
+                    # Separate one multipart section
+                    part, _, buffer = buffer.partition(boundary)
 
-                # Keep anything after this JPEG for the next frame
-                buffer = buffer[end + 2:]
+                    # Find the end of the HTTP headers
+                    header_end = part.find(b"\r\n\r\n")
 
-                frame = cv2.imdecode(
-                    np.frombuffer(jpeg_data, dtype=np.uint8),
-                    cv2.IMREAD_COLOR
-                )
+                    if header_end == -1:
+                        continue
 
-                if frame is not None:
+                    # Everything after the headers is H.264
+                    h264_data = part[header_end + 4:]
+
+                    if not h264_data:
+                        continue
+
+                    # Send H.264 to FFmpeg
+                    ffmpeg.stdin.write(h264_data)
+                    ffmpeg.stdin.flush()
+
+                    # Read one decoded frame from FFmpeg
+                    raw_frame = ffmpeg.stdout.read(FRAME_SIZE)
+
+                    if len(raw_frame) != FRAME_SIZE:
+                        continue
+
+                    # Convert raw bytes to OpenCV image
+                    frame = np.frombuffer(
+                        raw_frame,
+                        dtype=np.uint8
+                    ).reshape((HEIGHT, WIDTH, 3))
+
+                    # Store only the newest frame
                     with frame_lock:
                         latest_frame = frame
 
-                    print("Got frame:", frame.shape)
+        except Exception as e:
+            print("Camera loop error:", e)
+
+        finally:
+            response.close()
+
+            ffmpeg.stdin.close()
+            ffmpeg.stdout.close()
+            ffmpeg.wait()
+
+            print("Camera stream stopped.")
 
 
     # ========================================================
