@@ -193,15 +193,18 @@ class StemiApp:
 
 
         ffmpeg = subprocess.Popen(
-
-            ffmpeg_cmd,
-
+            [
+                "ffmpeg",
+                "-loglevel", "error",
+                "-f", "h264",
+                "-i", "pipe:0",
+                "-f", "rawvideo",
+                "-pix_fmt", "bgr24",
+                "pipe:1"
+            ],
             stdin=subprocess.PIPE,
-
             stdout=subprocess.PIPE,
-
-            stderr=subprocess.PIPE,
-
+            stderr=None,
             bufsize=10**8
         )
 
@@ -220,22 +223,17 @@ class StemiApp:
 
                 try:
 
-                    raw_frame = ffmpeg.stdout.read(FRAME_SIZE)
+                    raw_frame = b""
+
+                    while len(raw_frame) < FRAME_SIZE:
+                        chunk = ffmpeg.stdout.read(FRAME_SIZE - len(raw_frame))
+                        if not chunk:
+                            break
+                        raw_frame += chunk
 
                     if len(raw_frame) != FRAME_SIZE:
-
-                        if not self.running:
-                            break
-
-                        print(
-                            "Incomplete frame:",
-                            len(raw_frame),
-                            "/",
-                            FRAME_SIZE
-                        )
-
-                        continue
-
+                        print("FFmpeg ended with incomplete frame:", len(raw_frame), "/", FRAME_SIZE)
+                        break
 
                     frame = np.frombuffer(
                         raw_frame,
