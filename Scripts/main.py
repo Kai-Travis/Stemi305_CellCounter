@@ -1,5 +1,6 @@
 import tkinter as tk
 from tkinter import messagebox
+from tkinter import filedialog
 import cv2
 from PIL import Image, ImageTk
 import requests
@@ -9,6 +10,7 @@ import time
 import numpy as np
 import subprocess
 import queue
+import os
 
 # ============================================================
 # Camera settings
@@ -93,6 +95,17 @@ class StemiApp:
         )
 
         self.count_button.pack()
+
+        self.capture_button = tk.Button(
+            self.button_frame,
+            text="Capture",
+            font=("Arial", 24, "bold"),
+            width=12,
+            height=3,
+            command=self.capture_Frame
+        )
+
+        self.capture_button.pack()
 
         # ----------------------------------------------------
         # Start camera thread
@@ -462,6 +475,63 @@ class StemiApp:
             self.update_video
         )
 
+
+    def capture_Frame(self):
+        filepath = filedialog.asksaveasfilename(title="Save Image", defaultextension=".jpg",
+                                                 filetypes=[("JPEG image", "*.jpg"), ("All files", "*.*")],
+                                                 initialfile=time.strftime("capture_%Y%m%d_%H%M%S.jpg"))
+        if not filepath:
+            return
+        
+        self.capture_button.config(text="Capturing...", state="disabled")
+
+        threading.Thread(target=self.capture_image, args=(filepath,), daemon=True).start()
+
+    def capture_image(self, filepath):
+        try:
+            print("Taking snapshot")
+
+            response = requests.get(
+                SNAPSHOT_URL,
+                auth=HTTPBasicAuth(USERNAME, PASSWORD),
+                timeout=10
+            )
+
+            response.raise_for_status()
+
+            image_data = response.content
+
+            print(f"Snapshot received:" f"{len(image_data)} bytes")
+
+            with open(filepath, "wb") as f:
+                f.write(image_data)
+            
+            print("Image saved: ", filepath)
+
+            def capture_finished():
+                self.capture_button.config(
+                    text="Capture Image", state="normal"
+                )
+
+                messagebox.showinfo(
+                    "Capture Complete",
+                    f"Image saved to:\n{filepath}"
+                )
+
+            self.root.after(0,
+                            capture_finished
+                            )
+        
+        except Exception as e:
+            print("Capture error:", e)
+
+            self.root.after(0,
+                            lambda: self.capture_button.config(text="Capture Image", state="normal")
+                            )
+            self.root.after(0,
+                            self.show_error,
+                            str(e)
+                            )
 
     # ========================================================
     # Count cells
