@@ -21,8 +21,8 @@ PASSWORD = "ZEISS1846"
 STREAM_URL = f"http://{CAMERA_IP}:8080/?action=stream"
 SNAPSHOT_URL = f"http://{CAMERA_IP}:8080/?action=snapshot"
 
-FRAME_WIDTH = 1920
-FRAME_HEIGHT = 1080
+FRAME_WIDTH = 960
+FRAME_HEIGHT = 540
 FRAME_SIZE = FRAME_WIDTH * FRAME_HEIGHT * 3
 
 
@@ -155,12 +155,16 @@ class StemiApp:
 
         ffmpeg_cmd = [
 
-            "ffmpeg",
+            r"C:\Users\CVUser\AppData\Local\Microsoft\WinGet\Packages\Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe\ffmpeg-9.0.1-full_build\bin\ffmpeg.exe",
 
             "-loglevel", "error",
 
+            "-fflags", "nobuffer",
+            "-flags", "low_delay",
             "-f", "h264",
             "-i", "pipe:0",
+
+            "-vf", "scale=960:540",
 
             "-f", "rawvideo",
             "-pix_fmt", "bgr24",
@@ -170,15 +174,7 @@ class StemiApp:
 
 
         ffmpeg = subprocess.Popen(
-            [
-                "ffmpeg",
-                "-loglevel", "error",
-                "-f", "h264",
-                "-i", "pipe:0",
-                "-f", "rawvideo",
-                "-pix_fmt", "bgr24",
-                "pipe:1"
-            ],
+            ffmpeg_cmd,
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=None,
@@ -229,7 +225,6 @@ class StemiApp:
                     # Always keep only newest frame
                     with self.frame_lock:
                         self.current_frame = frame.copy()
-                    print("GOT FRAME!")
 
 
                 except Exception as e:
@@ -358,8 +353,6 @@ class StemiApp:
 
                     # Feed packet to FFmpeg
                     try:
-                        print("sending H264 packet:", len(h264_data), "bytes")
-
                         ffmpeg.stdin.write(h264_data)
                         ffmpeg.stdin.flush()
 
