@@ -105,8 +105,6 @@ class StemiApp:
 
         self.camera_thread.start()
 
-        self.update_gui_frame()
-
         # ----------------------------------------------------
         # Start GUI update loop
         # ----------------------------------------------------
@@ -121,27 +119,6 @@ class StemiApp:
             "WM_DELETE_WINDOW",
             self.close
         )
-
-    def update_gui_frame(self):
-        if not self.running:
-            return
-
-        if self.current_frame is not None:
-            try:
-                frame = self.current_frame.copy()
-                frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                image = Image.fromarray(frame_rgb)
-                image.thumbnail((800,600))
-                photo = ImageTk.PhotoImage(image)
-
-                self.video_label.configure(image=photo)
-                self.video_label.image = photo
-
-            except Exception as e:
-                print("GUI frame error", e)
-
-        self.root.after(33, self.update_gui_frame)
-
 
     # ========================================================
     # Camera acquisition
@@ -250,7 +227,9 @@ class StemiApp:
 
 
                     # Always keep only newest frame
-                    self.current_frame = frame.copy()
+                    with self.frame_lock:
+                        self.current_frame = frame.copy()
+                    print("GOT FRAME!")
 
 
                 except Exception as e:
@@ -379,22 +358,14 @@ class StemiApp:
 
                     # Feed packet to FFmpeg
                     try:
+                        print("sending H264 packet:", len(h264_data), "bytes")
 
-                        ffmpeg.stdin.write(
-                            h264_data
-                        )
-
+                        ffmpeg.stdin.write(h264_data)
                         ffmpeg.stdin.flush()
 
-
                     except BrokenPipeError:
-
-                        print(
-                            "FFmpeg pipe closed"
-                        )
-
+                        print("FFmpeg pipe close")
                         self.running = False
-
                         break
 
 
