@@ -32,8 +32,8 @@ FRAME_SIZE = FRAME_WIDTH * FRAME_HEIGHT * 3
 # GUI settings
 # ============================================================
 
-PREVIEW_WIDTH = 640
-PREVIEW_HEIGHT = 360
+PREVIEW_WIDTH = 960
+PREVIEW_HEIGHT = 540
 
 # How often the GUI updates the displayed image
 # 0.10 seconds = approximately 10 FPS
