@@ -1,6 +1,5 @@
 import cv2
 import numpy as np
-from skimage.morphology import skeletonize
 
 MM_PER_PIXEL = 0.00625
 HEIGHT = 0.1
@@ -113,7 +112,7 @@ def count(img):
 
     img_area = umheight * umwidth * HEIGHT
 
-    concentration = (estimated_count * 10**4)/img_area
+    concentration = (estimated_count * 2 * 10**4)/img_area
     print("Cells: ", estimated_count)
     print("Concentration: ", concentration)
 

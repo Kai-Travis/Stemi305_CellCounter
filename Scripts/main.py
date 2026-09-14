@@ -276,43 +276,32 @@ class StemiApp:
 
 
         try:
-
             for chunk in response.iter_content(
                 chunk_size=8192
             ):
-
                 if not self.running:
                     break
-
 
                 if not chunk:
                     continue
 
-
                 buffer += chunk
 
-
                 while True:
-
 
                     # Find multipart boundary
                     header_end = buffer.find(
                         b"\r\n\r\n"
                     )
-
-
                     if header_end == -1:
                         break
-
 
                     header = buffer[
                         :header_end
                     ]
 
-
                     # Find Content-Length
                     content_length = None
-
 
                     for line in header.split(
                         b"\r\n"
@@ -323,7 +312,6 @@ class StemiApp:
                         ):
 
                             try:
-
                                 content_length = int(
                                     line.split(
                                         b":"
@@ -331,9 +319,7 @@ class StemiApp:
                                 )
 
                             except Exception:
-
                                 content_length = None
-
 
                     if content_length is None:
 
@@ -341,35 +327,28 @@ class StemiApp:
                         buffer = buffer[
                             header_end + 4:
                         ]
-
                         continue
 
-
                     data_start = header_end + 4
-
                     data_end = (
                         data_start +
                         content_length
                     )
-
 
                     # Not enough data yet
                     if len(buffer) < data_end:
 
                         break
 
-
                     # Extract H264 packet
                     h264_data = buffer[
                         data_start:data_end
                     ]
 
-
                     # Remove processed packet
                     buffer = buffer[
                         data_end:
                     ]
-
 
                     # Feed packet to FFmpeg
                     try:
@@ -383,9 +362,7 @@ class StemiApp:
 
 
         except Exception as e:
-
             if self.running:
-
                 print(
                     "Camera stream error:",
                     e
@@ -393,34 +370,26 @@ class StemiApp:
 
 
         finally:
-
             print(
                 "Stopping camera stream"
             )
-
-
             try:
 
                 response.close()
-
             except Exception:
 
                 pass
-
 
             try:
 
                 ffmpeg.stdin.close()
-
             except Exception:
 
                 pass
 
-
             try:
 
                 ffmpeg.terminate()
-
             except Exception:
 
                 pass
@@ -584,123 +553,11 @@ class StemiApp:
         self.result_photo = ImageTk.PhotoImage(image)
 
         self.result_label.config(image=self.result_photo)
-        self.count_result_label.config(text=(f"Cells: {count}\n Concentration: {concentration:.2f}"))
+        self.count_result_label.config(text=(f"Cells: {count}\n Concentration: {concentration:.2f} cells/mL"))
 
     def show_count_error(self, error):
         self.count_button.config(text="Cell Count", state="normal")
         messagebox.showerror("cell counting error", error)
-
-
-    # ========================================================
-    # Cell counting
-    # ========================================================
-
-    def run_counting(self):
-
-        try:
-
-            print("Taking high-resolution snapshot...")
-
-            # ------------------------------------------------
-            # Get high-resolution snapshot
-            # ------------------------------------------------
-
-            response = requests.get(
-                SNAPSHOT_URL,
-                auth=HTTPBasicAuth(
-                    USERNAME,
-                    PASSWORD
-                ),
-                timeout=10
-            )
-
-            response.raise_for_status()
-
-            image_data = response.content
-
-            # ------------------------------------------------
-            # Decode JPEG
-            # ------------------------------------------------
-
-            image_array = cv2.imdecode(
-                np.frombuffer(
-                    image_data,
-                    dtype=np.uint8
-                ),
-                cv2.IMREAD_COLOR
-            )
-
-            if image_array is None:
-
-                raise RuntimeError(
-                    "Could not decode camera image."
-                )
-
-            print(
-                f"Snapshot received: "
-                f"{image_array.shape[1]} x "
-                f"{image_array.shape[0]}"
-            )
-
-            # ------------------------------------------------
-            # YOUR CELL COUNTING ALGORITHM
-            # ------------------------------------------------
-
-            # Replace this with your actual algorithm.
-            #
-            # Example:
-            #
-            # count = count_cells(image_array)
-
-            count = "TEST"
-
-            # ------------------------------------------------
-            # Show result
-            # ------------------------------------------------
-
-            self.root.after(
-                0,
-                self.show_result,
-                count
-            )
-
-        except Exception as e:
-
-            self.root.after(
-                0,
-                self.show_error,
-                str(e)
-            )
-
-
-    # ========================================================
-    # Display result
-    # ========================================================
-
-    def show_result(self, result):
-
-        self.count_button.config(
-            text=f"CELLS: {result}",
-            state="normal"
-        )
-
-
-    # ========================================================
-    # Display error
-    # ========================================================
-
-    def show_error(self, error):
-
-        messagebox.showerror(
-            "Error",
-            error
-        )
-
-        self.count_button.config(
-            text="COUNT CELLS",
-            state="normal"
-        )
-
 
     # ========================================================
     # Close application
