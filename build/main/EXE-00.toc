@@ -68,7 +68,7 @@
  [],
  False,
  False,
- 1789383503,
+ 1789384896,
  [('runw.exe',
    'C:\\Github\\Stemi305_CellCounter\\.venv\\Lib\\site-packages\\PyInstaller\\bootloader\\Windows-64bit-intel\\runw.exe',
    'EXECUTABLE')],
