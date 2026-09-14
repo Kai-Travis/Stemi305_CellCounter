@@ -1,8 +1,11 @@
 import cv2
 import numpy as np
+import math
 
 MM_PER_PIXEL = 0.00119
 HEIGHT = 0.1
+
+
 
 def count(img):
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
@@ -36,9 +39,10 @@ def count(img):
 
     num_labels, blob_labels, stats, _ = cv2.connectedComponentsWithStats(dist_binary, 8)
     line_test = np.zeros_like(dist_binary)
-    fill_threshold = 0.86
-    line_threshold = 1.22
-    area_threshold = 200
+    fill_threshold = 0.85
+    line_threshold = 1.24
+    area_threshold = 80
+    area_upper_thresh = 450
     for label in range(1, num_labels):
         width = stats[label, cv2.CC_STAT_WIDTH]
         height = stats[label, cv2.CC_STAT_HEIGHT]
@@ -56,15 +60,12 @@ def count(img):
         
         fill_ratio = white_pixels / circle_pixels
         line_ratio = max(width,height) / min(width,height)
-        if line_ratio >= line_threshold or fill_ratio <= fill_threshold:
+        if line_ratio >= line_threshold or fill_ratio <= fill_threshold or area >= area_upper_thresh:
             line_test[blob_labels == label] = 255
 
-    """
-    skeleton = skeletonize(line_test > 0)
-    skeleton_display = (skeleton * 255).astype(np.uint8)
-    cv2.imshow("Skeleton", skeleton_display)
+    cv2.imshow("dist binary", dist_binary)
+    cv2.imshow("line test", line_test)
     cv2.waitKey(0)
-    """
 
     sure_fg = np.zeros_like(binary)
     sure_fg = (dist_norm > 0.1).astype(np.uint8) * 255
@@ -79,42 +80,68 @@ def count(img):
 
     markers = cv2.watershed(img, markers)
 
-    result = img.copy()
-    result[markers == -1] = [0,255,0]
-    contours, _ = cv2.findContours(
-        line_test,
-        cv2.RETR_EXTERNAL,
-        cv2.CHAIN_APPROX_SIMPLE
-    )
-
-    cv2.drawContours(result, contours, -1, (0,0,255), 2)
-
     labels = np.unique(markers)
-
-    cell_count = 0
+    single_cell_count = 0
+    single_cell_pixels = 0
 
     for label in labels:
+        if label <= 1: continue
 
-        if label <= 1:
-            continue
+        cell_mask = (markers == label)
 
-        cell_count += 1
+        overlaps_blob = np.any(line_test[cell_mask] == 255)
 
-    multie_blob_count = len(contours)
+        if overlaps_blob: continue
 
-    estimated_count = round(cell_count + multie_blob_count * (2.5-1))
+        single_cell_count += 1
+        single_cell_pixels += np.sum(cell_mask)
 
+    single_cell_area = single_cell_pixels / single_cell_count
+
+    contours, _ = cv2.findContours(line_test, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+    multi_cell_count = 0
+
+    for contour in contours:
+        blob_mask = np.zeros_like(line_test)
+
+        cv2.drawContours(blob_mask, [contour], -1, 255, -1)
+
+        ########### Did *1.2 to blob area to compensate for the fact that this is comming from dist_transform instead of the single cell area is coming from the watershed!!!!
+
+
+        blob_area = np.sum(blob_mask == 255) * 1.2
+        estimated_cells_in_blob = math.ceil(blob_area / single_cell_area)
+
+        multi_cell_count += estimated_cells_in_blob
+
+    estimated_count = single_cell_count + multi_cell_count
+
+    result = img.copy()
+
+    result[markers == -1] = [0, 255, 0]
+
+    cv2.drawContours(result, contours, -1, (0, 0, 255), 2)
 
     img_height, img_width = gray.shape
+    
+    mmheight = img_height * MM_PER_PIXEL
+    mmwidth = img_width * MM_PER_PIXEL
 
-    umheight = img_height * MM_PER_PIXEL
-    umwidth = img_width * MM_PER_PIXEL
-
-    img_area = umheight * umwidth
+    img_area = mmheight * mmwidth
     countpermm2=estimated_count/img_area
 
     concentration = countpermm2*1e4*4
+    
     print("Cells: ", estimated_count)
     print("Concentration: ", concentration)
 
     return estimated_count, concentration, result
+
+image_path = r"C:\Github\Stemi305_CellCounter\Test\test2.jpg"
+image = cv2.imread(image_path)
+cellCount, cellConc, resultimg = count(image)
+print(f"Count: {cellCount}, Conc: {cellConc}")
+cv2.imshow("result", resultimg)
+cv2.waitKey(0)
+cv2.destroyAllWindows
