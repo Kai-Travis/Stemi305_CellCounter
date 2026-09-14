@@ -11,6 +11,7 @@ import numpy as np
 import subprocess
 import queue
 import os
+from cellCount import count
 
 # ============================================================
 # Camera settings
@@ -106,6 +107,12 @@ class StemiApp:
         )
 
         self.capture_button.pack()
+
+        self.result_label = tk.Label(self.root)
+        self.result_label.pack()
+
+        self.count_result_label = tk.Label(self.root, text="Cells: --\n Concentration: --")
+        self.count_result_label.pack()
 
         # ----------------------------------------------------
         # Start camera thread
@@ -539,17 +546,49 @@ class StemiApp:
 
     def count_cells(self):
 
-        self.count_button.config(
-            text="COUNTING...",
-            state="disabled"
-        )
+        self.count_button.config(text="Counting", state="disabled")
+        threading.Thread(target=self.count_cells_from_camera, daemon=True).start()
 
-        thread = threading.Thread(
-            target=self.run_counting,
-            daemon=True
-        )
+    def count_cells_from_camera(self):
+        try: 
+            print("taking snap")
+            response=requests.get(SNAPSHOT_URL, auth=HTTPBasicAuth(USERNAME, PASSWORD), timeout=10)
+            response.raise_for_status()
 
-        thread.start()
+            image_data = response.content
+
+            print(f"Snapshot received: {len(image_data)} bytes")
+
+            image_array = cv2.imdecode(np.frombuffer(image_data, dtype=np.uint8), cv2.IMREAD_COLOR)
+
+            cellCount, concentration, result = count(image_array)
+
+            self.root.after(0, self.show_count_result, cellCount, concentration, result)
+
+        except Exception as e:
+            print("Counting error:", e)
+
+            self.root.after(0, self.show_count_error, str(e))
+
+    def show_count_result(self, count, concentration, result):
+        self.count_button.config(text="Cell Count", state="normal")
+
+        display_width = 640
+        display_height = int(result.shape[0] * display_width / result.shape[1])
+
+        display = cv2.resize(result, (display_width, display_height))
+
+        display = cv2.cvtColor(display, cv2.COLOR_BGR2RGB)
+
+        image = Image.fromarray(display)
+        self.result_photo = ImageTk.PhotoImage(image)
+
+        self.result_label.config(image=self.result_photo)
+        self.count_result_label.config(text=(f"Cells: {count}\n Concentration: {concentration:.2f}"))
+
+    def show_count_error(self, error):
+        self.count_button.config(text="Cell Count", state="normal")
+        messagebox.showerror("cell counting error", error)
 
 
     # ========================================================
