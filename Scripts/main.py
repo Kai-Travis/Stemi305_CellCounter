@@ -114,6 +114,11 @@ class StemiApp:
         self.count_result_label = tk.Label(self.root, text="Cells: --\n Concentration: --")
         self.count_result_label.pack()
 
+        tk.Label(self.root, text="Dilution ratio:").pack()
+        self.dilution_entry = tk.Entry(self.root, width=10)
+        self.dilution_entry.insert(0, "2")
+        self.dilution_entry.pack()
+
         # ----------------------------------------------------
         # Start camera thread
         # ----------------------------------------------------

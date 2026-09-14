@@ -7,7 +7,7 @@ HEIGHT = 0.1
 
 
 
-def count(img):
+def count(img, dilution_ratio):
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
     gray = cv2.GaussianBlur(gray, (5,5), 0)
@@ -62,10 +62,6 @@ def count(img):
         line_ratio = max(width,height) / min(width,height)
         if line_ratio >= line_threshold or fill_ratio <= fill_threshold or area >= area_upper_thresh:
             line_test[blob_labels == label] = 255
-
-    cv2.imshow("dist binary", dist_binary)
-    cv2.imshow("line test", line_test)
-    cv2.waitKey(0)
 
     sure_fg = np.zeros_like(binary)
     sure_fg = (dist_norm > 0.1).astype(np.uint8) * 255
@@ -131,17 +127,9 @@ def count(img):
     img_area = mmheight * mmwidth
     countpermm2=estimated_count/img_area
 
-    concentration = countpermm2*1e4*4
+    concentration = countpermm2*1e4*dilution_ratio
     
     print("Cells: ", estimated_count)
     print("Concentration: ", concentration)
 
     return estimated_count, concentration, result
-
-image_path = r"C:\Github\Stemi305_CellCounter\Test\test2.jpg"
-image = cv2.imread(image_path)
-cellCount, cellConc, resultimg = count(image)
-print(f"Count: {cellCount}, Conc: {cellConc}")
-cv2.imshow("result", resultimg)
-cv2.waitKey(0)
-cv2.destroyAllWindows
