@@ -520,8 +520,17 @@ class StemiApp:
 
     def count_cells(self):
 
+        try:
+            dilution_ratio = float(self.dilution_entry.get())
+            if dilution_ratio <= 0:
+                raise ValueError("Dilution ratio must be greater than 0")
+
+        except ValueError:
+            messagebox.showerror("Invalid dilution ratio", "please enter a valid positive float")
+            return
+
         self.count_button.config(text="Counting", state="disabled")
-        threading.Thread(target=self.count_cells_from_camera, daemon=True).start()
+        threading.Thread(target=self.count_cells_from_camera, args =(dilution_ratio,), daemon=True).start()
 
     def count_cells_from_camera(self):
         try: 
