@@ -1,7 +1,7 @@
 import cv2
 import numpy as np
 
-MM_PER_PIXEL = 0.00625
+MM_PER_PIXEL = 0.00119
 HEIGHT = 0.1
 
 def count(img):
@@ -102,7 +102,7 @@ def count(img):
 
     multie_blob_count = len(contours)
 
-    estimated_count = round(cell_count + multie_blob_count * (2.1-1))
+    estimated_count = round(cell_count + multie_blob_count * (2.5-1))
 
 
     img_height, img_width = gray.shape
@@ -110,9 +110,10 @@ def count(img):
     umheight = img_height * MM_PER_PIXEL
     umwidth = img_width * MM_PER_PIXEL
 
-    img_area = umheight * umwidth * HEIGHT
+    img_area = umheight * umwidth
+    countpermm2=estimated_count/img_area
 
-    concentration = (estimated_count * 2 * 10**4)/img_area
+    concentration = countpermm2*1e4*4
     print("Cells: ", estimated_count)
     print("Concentration: ", concentration)
 
