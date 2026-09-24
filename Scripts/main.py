@@ -530,9 +530,9 @@ class StemiApp:
             return
 
         self.count_button.config(text="Counting", state="disabled")
-        threading.Thread(target=self.count_cells_from_camera, args =(dilution_ratio,), daemon=True).start()
+        threading.Thread(target=self.count_cells_from_camera, args =(dilution_ratio, ), daemon=True).start()
 
-    def count_cells_from_camera(self):
+    def count_cells_from_camera(self, dilution_ratio):
         try: 
             print("taking snap")
             response=requests.get(SNAPSHOT_URL, auth=HTTPBasicAuth(USERNAME, PASSWORD), timeout=10)
@@ -544,7 +544,7 @@ class StemiApp:
 
             image_array = cv2.imdecode(np.frombuffer(image_data, dtype=np.uint8), cv2.IMREAD_COLOR)
 
-            cellCount, concentration, result = count(image_array)
+            cellCount, concentration, result = count(image_array, dilution_ratio)
 
             self.root.after(0, self.show_count_result, cellCount, concentration, result)
 
@@ -567,7 +567,7 @@ class StemiApp:
         self.result_photo = ImageTk.PhotoImage(image)
 
         self.result_label.config(image=self.result_photo)
-        self.count_result_label.config(text=(f"Cells: {count}\n Concentration: {concentration:.2f} cells/mL"))
+        self.count_result_label.config(text=(f"Cells: {count}\n Concentration: {concentration:.2f} cells/mL = {concentration:.2e}"))
 
     def show_count_error(self, error):
         self.count_button.config(text="Cell Count", state="normal")
